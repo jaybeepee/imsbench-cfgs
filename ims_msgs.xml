@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- This program is free software; you can redistribute it and/or      -->
+<!-- modify it under the terms of the GNU General Public License as     -->
+<!-- published by the Free Software Foundation; either version 2 of the -->
+<!-- License, or (at your option) any later version.                    -->
+<!--                                                                    -->
+<!-- This program is distributed in the hope that it will be useful,    -->
+<!-- but WITHOUT ANY WARRANTY; without even the implied warranty of     -->
+<!-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the      -->
+<!-- GNU General Public License for more details.                       -->
+<!--                                                                    -->
+<!-- You should have received a copy of the GNU General Public License  -->
+<!-- along with this program; if not, write to the                      -->
+<!-- Free Software Foundation, Inc.,                                    -->
+<!-- 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA             -->
+<!--                                                                    -->
+<!--         IMS Benchmark Messaging scenario - UAS side                -->
+<!--                                                                    -->
+<!-- Author : David Verbeiren from Intel Corporation - July 2007        -->
+<!--          Xavier Simonart from Intel Corporation - July 2007        -->
+<!--          Philippe Lecluse from Intel Corporation - July 2007       -->
+<!--                                                                    -->
+ 
+<scenario name="ims_msgs">
+
+<!-- *** STEP 1 *** -->
+ <!-- Wait for scenario to be initiated by a REQ_USER remote request which will specify   -->
+ <!-- the ScenId -> UAS can then create a call with corresp scen and already feed it with -->
+ <!-- the received REQ_USER message.                                                      -->
+
+  <recvRmt type="req_user">
+    <action>
+      <assign_user pool="2" scheme="rand_uni"/>
+      <move_user pool="4"/>     <!-- So we don't take it again -->
+    </action>
+  </recvRmt>
+
+  <sendRmt type="res_user" crlf="true">
+    <param name="user_name" value="[field0]"/>
+    <param name="user_domain" value="[field1]"/>
+    <param name="call_id" value="[call_id]"/>
+  </sendRmt>
+
+<!-- *** STEP 2 *** -->
+ <!-- This is now the actual scenario. Since we are the controlled partner in this -->
+ <!-- scenario (we got the 'req_user' request), our SIP scenario should start by   -->
+ <!-- expecting an incoming SIP message                                            -->
+
+  <recv request="MESSAGE">
+    <action>
+      <exec int_cmd="set_start_time"/>  <!-- Real start time of the scenario -->
+    </action>
+  </recv>
+
+  <send crlf="true">
+    <![CDATA[
+
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_Record-Route:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[field0]@[local_ip]:[local_port];transport=[transport]>
+      Content-Length: 0
+    ]]>
+  </send>
+
+  <pause milliseconds="4000"/>
+   <!-- Keep the call open for a while in case the 200 is lost to be     -->
+   <!-- able to retransmit it if we receive the MESSAGE again.           -->
+
+<!-- *** STEP 3 *** -->
+ <!-- Move the user back to a pool from which it will be picked for new scenarios -->
+
+  <nop>
+    <action>
+      <move_user pool="2"/>     <!-- Done with scen -> back to 'Registered' -->
+    </action>
+  </nop>
+
+  <!-- definition of the response time repartition table (unit is ms)   -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 150, 200"/>
+
+  <!-- definition of the call length repartition table (unit is ms)     -->
+  <CallLengthRepartition value="10, 50, 100, 500, 1000, 5000, 10000"/>
+
+</scenario>

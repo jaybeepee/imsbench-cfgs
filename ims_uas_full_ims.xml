@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- This program is free software; you can redistribute it and/or      -->
+<!-- modify it under the terms of the GNU General Public License as     -->
+<!-- published by the Free Software Foundation; either version 2 of the -->
+<!-- License, or (at your option) any later version.                    -->
+<!--                                                                    -->
+<!-- This program is distributed in the hope that it will be useful,    -->
+<!-- but WITHOUT ANY WARRANTY; without even the implied warranty of     -->
+<!-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the      -->
+<!-- GNU General Public License for more details.                       -->
+<!--                                                                    -->
+<!-- You should have received a copy of the GNU General Public License  -->
+<!-- along with this program; if not, write to the                      -->
+<!-- Free Software Foundation, Inc.,                                    -->
+<!-- 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA             -->
+<!--                                                                    -->
+<!--          IMS Benchmark Calling scenario - UAS side                 -->
+<!--                                                                    -->
+<!-- Author : David Verbeiren from Intel Corporation - July 2007        -->
+<!--          Xavier Simonart from Intel Corporation - July 2007        -->
+<!--          Philippe Lecluse from Intel Corporation - July 2007       -->
+<!--                                                                    -->
+ 
+<scenario name="ims_uas">
+
+<!-- *** STEP 1 *** -->
+ <!-- Wait for scenario to be initiated by a REQ_USER remote request which will specify   -->
+ <!-- the ScenId -> UAS can then create a call with corresp scen and already feed it with -->
+ <!-- the received REQ_USER message.                                                      -->
+
+ <!-- Most of this this could possibly be fully hidden in the internal handling of        -->
+ <!-- REQ_USER message that triggers an instance of the scenario but since we have the    -->
+ <!-- necessary actions ('assign_user', 'move_user'), why not use them? (at the expense   -->
+ <!-- of marginally lower perf than hard-coded behavior...)                               -->
+
+  <recvRmt type="req_user">
+    <action>
+      <assign_user pool="2" scheme="rand_uni"/>
+      <move_user pool="3"/>     <!-- So we don't take it again -->
+    </action>
+  </recvRmt>
+
+  <sendRmt type="res_user" crlf="true">
+    <param name="user_name" value="[field0]"/>
+    <param name="user_domain" value="[field1]"/>
+    <param name="call_id" value="[call_id]"/>
+      <!-- We give our local call_id so the partner SIPp will include -->
+      <!-- it in subsequent messages to us, allowing us to then       -->
+      <!-- find the call back efficiently                             -->
+  </sendRmt>
+
+<!-- *** STEP 2 *** -->
+ <!-- This is now the actual scenario. Since we are the controlled partner in this -->
+ <!-- scenario (we got the 'req_user' request), our SIP scenario should start by a -->
+ <!-- expecting an incoming SIP message                                            -->
+
+  <recv request="INVITE" start_rtd="5,2">
+   <!-- The imestamp, stored in rtd[2], will be reported to UAC side at end of -->
+   <!-- scenario so it can compute the time the INVITE took from UAC to UAS.   -->
+   <!-- rtd[5] measures the ringing time (between receiving INVITE and sending -->
+   <!-- 200 OK.                                                                -->
+    <action>
+      <ereg regexp="(Via.*)([[:cntrl:]][[:cntrl:]]Via:[^[:cntrl:]]*)"
+            search_in="msg"
+            check_it="true"
+            assign_to="1" />
+      <ereg regexp="(Record-Route.*)([[:cntrl:]][[:cntrl:]]Record-Route:[^[:cntrl:]]*)"
+            search_in="msg"
+            check_it="true"
+            assign_to="2" />
+      <exec int_cmd="set_start_time"/>
+    </action>
+  </recv>
+
+  <send>
+    <![CDATA[
+
+      SIP/2.0 183 Session Progress
+      [last_Via:]
+      [last_Record-Route:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [field5]
+      s=-
+      c=IN IP[media_ip_type] [field5]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0
+      a=rtpmap:0 PCMU/8000
+
+    ]]>
+  </send>
+
+  <recv request="PRACK">
+  </recv>
+
+  <send>
+  <![CDATA[
+      
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_Record-Route:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+
+  <recv request="UPDATE">
+  </recv>
+
+  <send>
+  <![CDATA[
+
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_Record-Route:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+  
+  <!-- Ringing Time -->
+  <pause poisson="true" mean="%RingTime"/>
+ 
+  <send>
+    <![CDATA[
+
+      SIP/2.0 180 Ringing
+      [$1]
+      [$2]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      CSeq: 10 INVITE
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <recv request="PRACK">
+  </recv>
+
+  <send>
+  <![CDATA[
+      
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_Record-Route:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Ringing Time -->
+  <pause poisson="true" mean="%RingTime"/>
+
+  <send retrans="500" rtd="5">
+    <![CDATA[
+
+      SIP/2.0 200 OK
+      [$1]
+      [$2]
+      [routes]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      CSeq: 10 INVITE
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [field5]
+      s=-
+      c=IN IP[media_ip_type] [field5]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0
+      a=rtpmap:0 PCMU/8000
+
+    ]]>
+  </send>
+
+  <recv request="BYE" optional="true" next="5"/>  <!-- In case it went faster than ACK (UDP) -->
+
+  <recv request="ACK" start_rtd="1">
+   <!-- Timestamp of ACK received is stored in rtd[1] and we send it to UAC at the -->
+   <!-- end of the scenario so UAC can compute the full call establishment time    -->
+   <!-- (from UAC sending INVITE to UAS receiving ACK, minus the ringing time)     -->
+  </recv>
+
+  <!-- Hold Time (call connected) - Controlled by UAC side in this scenario -->
+
+  <recv request="BYE">
+  </recv>
+
+  <send crlf="true" next="10">
+    <![CDATA[
+
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Record-Route:]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <label id="5"/> <!-- BYE came before ACK -->
+
+  <send crlf="true">
+    <![CDATA[
+
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:]
+      [last_Call-ID:]
+      [last_Record-Route:]
+      [last_CSeq:]
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <recv request="ACK" optional="true" start_rtd="1"/>
+
+  <label id="10"/> <!-- END OF SCENARIO -->
+
+  <pause milliseconds="4000"/>
+   <!-- Keep the call open for a while in case the 200 is lost to be     -->
+   <!-- able to retransmit it if we receive the BYE again.               -->
+
+<!-- *** STEP 3 *** -->
+ <!-- Move the user back to a pool from which it will be picked for new scenarios -->
+ <!-- and send to partner controlling the scenario the timing measurement we took -->
+ <!-- so it can compute all timings and check IHS criterions.                     -->
+
+  <nop>
+    <action>
+      <move_user pool="2"/>     <!-- Done with scen -> back to 'Registered' -->
+    </action>
+  </nop>
+
+  <sendRmt type="res_call_info">
+    <param name="rtd_info" rtd="1" info="timestamp"/>
+     <!-- This sends the timestamp stored in start_time of rtd[1] -->
+    <param name="rtd_info" rtd="2" info="timestamp"/>
+    <param name="rtd_info" rtd="5" info="value"/>
+     <!-- This sends the value (elapse time) that was measured by rtd[5] -->
+  </sendRmt>
+
+  <!-- definition of the response time repartition table (unit is ms)   -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 150, 200"/>
+
+  <!-- definition of the call length repartition table (unit is ms)     -->
+  <CallLengthRepartition value="10, 50, 100, 500, 1000, 5000, 10000"/>
+
+</scenario>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?><configuration>
+  <!-- Test System Parameters -->
+  <param name="number_test_systems" value="1"/>
+  <param name="prep_offset" value="2000"/>
+  <param name="rand_seed" value="0"/>
+  <param name="report" value="1"/>
+  <param name="log" value="1"/>
+  <param name="transient_time" value="5"/>
+  <param name="max_time_offset" value="500"/>
+
+  <!-- Scenario Parameters -->
+  <scen_param name="RegistrationExpire" value="1000000"/>
+  <scen_param name="RingTimeDistr" value="exponential"/>
+  <scen_param name="PMMDataSize" value="140"/>
+  <scen_param name="HoldTimeDistr" value="exponential"/>
+  <scen_param name="HoldTime" value="1000"/>
+  <scen_param name="PMMDataSizeDistr" value="uniform"/>
+  <scen_param name="RingTime" value="1000"/>
+  <!-- Scenario -->
+  <scenario name="ims_rereg" max_ihs="100"/>
+  <scenario name="ims_reg" max_ihs="100/>
+  <scenario name="ims_uac" max_ihs="100/>
+  <scenario name="ims_uas"/>
+  <scenario name="ims_dereg" max_ihs="100"/>
+  <scenario name="ims_msgc" max_ihs="100/>
+  <scenario name="ims_msgs"/>
+</configuration>
+
+<!-- Pre-Registration Phase -->
+<run cps="10" max_calls="100" distribution="constant" sync_mode="off" use_scen_max_ihs="no" max_global_ihs="10" stats="1000">
+   <scenario name="ims_reg" ratio="100"/>
+</run>
+
+<!-- Stir Phase -->
+<run cps="1" duration="100" step_increase="0" num_steps="1" distribution="poisson" use_scen_max_ihs="no" max_global_ihs="10" stats="2000" report="no">
+<!--<scenario name="ims_rereg" ratio="100"/>-->
+<scenario name="ims_reg" ratio="20"/>
+<!--<scenario name="ims_dereg" ratio="34"/>-->
+<!--<scenario name="ims_msgc" ratio="10"/>-->
+<scenario name="ims_uac" ratio="80"/>
+</run>
+
+<!-- Benchmark Run Phase -->
+<run cps="1" duration="50" step_increase="10" num_steps="15" distribution="poisson" stats="2000">
+</run>
+
+<!-- Final Pause - Required to allow last step data collection to complete -->
+<run cps="0" duration="3"/>
+

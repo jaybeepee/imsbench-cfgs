@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="ISO-8859-1" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!-- This program is free software; you can redistribute it and/or      -->
+<!-- modify it under the terms of the GNU General Public License as     -->
+<!-- published by the Free Software Foundation; either version 2 of the -->
+<!-- License, or (at your option) any later version.                    -->
+<!--                                                                    -->
+<!-- This program is distributed in the hope that it will be useful,    -->
+<!-- but WITHOUT ANY WARRANTY; without even the implied warranty of     -->
+<!-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the      -->
+<!-- GNU General Public License for more details.                       -->
+<!--                                                                    -->
+<!-- You should have received a copy of the GNU General Public License  -->
+<!-- along with this program; if not, write to the                      -->
+<!-- Free Software Foundation, Inc.,                                    -->
+<!-- 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA             -->
+<!--                                                                    -->
+<!--          IMS Benchmark Calling scenario - UAC side                 -->
+<!--                                                                    -->
+<!-- Author : David Verbeiren from Intel Corporation - July 2007        -->
+<!--          Xavier Simonart from Intel Corporation - July 2007        -->
+<!--          Philippe Lecluse from Intel Corporation - July 2007       -->
+<!--                                                                    -->
+
+<scenario name="ims_uac">
+  <info>
+    <!-- The RTD metrics listed here are checked at the end of the call  -->
+    <!-- In case one or more is exceeded, the call is marked as failed.  -->
+    <metric ref="PX_TRT-SES1" rtd="1" max="8000"/>
+    <metric ref="PX_TRT-SES2" rtd="2" max="2000"/>
+    <metric ref="PX_TRT-REL1" rtd="3" max="2000"/>
+    <metric ref="CALL_DURATION" rtd="4"/>
+  </info>
+
+<!-- *** STEP 1 *** -->
+ <!-- This is a scenario preparation step and is executed before the time the  -->
+ <!-- scenario is scheduled to really start, so everything is ready (including -->
+ <!-- at the partner SIPp - UAS - side) by then.                               -->
+ <!-- This prepation involves:                                                 -->
+ <!-- * Selecting a local user from a suitable pool                            -->
+ <!-- * Requesting a suitable user from a partner SIPp and instructing it to   -->
+ <!--   run the appropriate UAS side scenario to run against this one.         -->
+
+  <nop>
+    <action>
+      <assign_user pool="2" scheme="rand_uni"/>  <!-- Select user from 'Registered' pool -->
+      <move_user pool="3"/>                      <!-- So we don't take it again          -->
+    </action>
+  </nop>
+
+  <sendRmt type="req_user">
+   <!-- The first 'sendRmt' command of a scenario, unless preceded by a 'recvRmt',            -->
+   <!-- automatically selects a partner SIPp at random and remembers it for the duration of   -->
+   <!-- the scenario.                                                                         -->
+   <!-- The below parameters are to be encoded as IE (the mapping of param names to IEs is    -->
+   <!-- done at scenario parsing time)                                                        -->
+    <param name="scenario" value="ims_uas"/>
+      <!-- The scenario that the partner must run. The scenario name given in 'value' will be -->
+      <!-- looked up in the locally loaded scenarios and converted to a scenario id (int)     -->
+      <!-- before sending the message to the partner. Hence it is required that all partners  -->
+      <!-- have the exact same set of scenarios in the same order.                            -->
+    <param name="from_uri" value="[field0]@[field1]"/>
+      <!-- We must give the From URI (local user we selected) so that the partner SIPp can    -->
+      <!-- detect when it later gets the SIP call that is prepared in this step.              -->
+      <!-- Note: We can't use the call_id for this because the SUT could potentially change   -->
+      <!-- the call_id between both call legs (SIPp-1 -> SUT -> SIPp-2)                       -->
+    <param name="call_id" value="[call_id]"/>
+      <!-- We include our local call_id so the partner SIPp will include it in any message it -->
+      <!-- later sends to us (e.g. 'res_user' response below or 'res_call_info' later)        -->
+      <!-- thereby allowing us to efficiently find back the call to which the message relates.-->
+  </sendRmt>
+
+  <recvRmt type="res_user" timeout="8000">
+   <!-- When we get the response from the partner SIPp, we store the remote user URI in call  -->
+   <!-- variables for later usage in the scenario (as 'To' user).                             -->
+    <action>
+      <store_param param="user_name" assign_to="1" />
+      <store_param param="user_domain" assign_to="2" />
+    </action>
+  </recvRmt>
+
+<!-- *** STEP 2 *** -->
+ <!-- Now that our preparation steps are done, we wait for the time when the call must  -->
+ <!-- actually start, according to the random scenario arrival distribution.            -->
+  <sync crlf="true">
+    <action>
+      <exec int_cmd="set_start_time"/>
+    </action>
+  </sync>
+
+<!-- *** STEP 3 *** -->
+ <!-- Now the SIP scenario really starts -->
+
+  <send retrans="500" start_rtd="1,2,4">  <!-- We start timer 1 and timer 2 -->
+    <![CDATA[
+
+      INVITE sip:[$1]@[$2] SIP/2.0
+      Via: SIP/2.0/[transport] [field5]:[local_port];branch=[branch]
+      Max-Forwards: 70
+      Route: [$u1]
+      From: "[field0]" <sip:[field0]@[field1]>;tag=[pid]SIPpTag00[call_number]
+      To: "[$1]" <sip:[$1]@[$2]>
+      Call-ID: [call_id]
+      CSeq: 10 INVITE
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [field5]
+      s=-
+      c=IN IP[media_ip_type] [field5]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0
+      a=rtpmap:0 PCMU/8000
+
+    ]]>
+  </send>
+
+  <recv response="100" optional="true">
+  </recv>
+
+  <recv response="183" rrs="true">
+  </recv>
+
+   <send>
+    <![CDATA[
+
+      PRACK [next_url] SIP/2.0
+      [last_Via:]
+      Max-Forwards: 70
+      [routes:]
+      [last_From:]
+      [last_To:]
+      Call-ID: [call_id]
+      CSeq: 11 PRACK
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+  
+  <recv response="200">
+  </recv>
+
+  <send>
+    <![CDATA[
+
+      UPDATE [next_url] SIP/2.0
+      [last_Via:]
+      Max-Forwards: 70
+      [routes:]
+      [last_From:]
+      [last_To:]
+      Call-ID: [call_id]
+      CSeq: 12 UPDATE
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Type: application/sdp
+      Content-Length: [len]
+
+      v=0
+      o=user1 53655765 2353687637 IN IP[local_ip_type] [field5]
+      s=-
+      c=IN IP[media_ip_type] [field5]
+      t=0 0
+      m=audio [media_port] RTP/AVP 0
+      a=rtpmap:0 PCMU/8000
+
+    ]]>
+  </send>
+
+  <recv response="200">
+  </recv>
+
+  <recv response="180">
+  </recv>
+
+  <send>
+    <![CDATA[
+
+      PRACK [next_url] SIP/2.0
+      [last_Via:]
+      Max-Forwards: 70
+      [routes:]
+      [last_From:]
+      [last_To:]
+      Call-ID: [call_id]
+      CSeq: 13 PRACK
+      Contact: <sip:[field0]@[field5]:[local_port];transport=[transport]>
+      Content-Length: 0
+
+    ]]>
+  </send>
+ 
+  <recv response="200">
+  </recv>
+
+
+  <!-- By adding rrs="true" (Record Route Sets), the route sets are -->
+  <!-- saved and used for following messages sent.                  -->
+  <recv response="200" rrs="true">
+  </recv>
+
+  <send>
+    <![CDATA[
+
+      ACK [next_url] SIP/2.0
+      [last_Via:]
+      Max-Forwards: 70
+      [routes:]
+      From: "[field0]" <sip:[field0]@[field1]>;tag=[pid]SIPpTag00[call_number]
+      [last_To:]
+      Call-ID: [call_id]
+      CSeq: 10 ACK
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Hold Time (call connected) -->
+  <!-- pause poisson="true" mean="%HoldTime"/ -->
+  <pause exponential="true" mean="%HoldTime"/>
+
+  <send retrans="500" start_rtd="3">
+    <![CDATA[
+
+      BYE [next_url] SIP/2.0
+      [last_Via:]
+      Max-Forwards: 70
+      [routes:]
+      From: "[field0]" <sip:[field0]@[field1]>;tag=[pid]SIPpTag00[call_number]
+      [last_To:]
+      Call-ID: [call_id]
+      CSeq: 14 BYE
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <recv response="200" crlf="true" rtd="3,4">
+    <action>
+      <move_user pool="2"/>  <!-- Back to Registered pool !-->
+    </action>
+  </recv>
+
+<!-- *** STEP 4 *** -->
+ <!-- After the scenario completes, we wait for timing measurements from the partner SIPp -->
+  <recvRmt type="res_call_info" timeout="8000">
+    <action>
+      <rtd_eval rtd="2" start="2" stop="r2"/>
+       <!-- This will look in the message recieved from partner for an IE     -->
+       <!-- [rtd_info:[rtd_id:2][rtd_start_time:xyz]] and use that to compute -->
+       <!-- the rtd (difference with the timestamp_rtd="2", so this measures  -->
+       <!-- the time the INVITE took to reach the remote side).       -->
+      <rtd_eval rtd="1" start="1" stop="r1"/>
+       <!-- rtd[1] is between sending INVITE at UAC and receiving ACK at UAS. -->
+       <!-- But we must substract ringing time from that:                     -->
+      <rtd_store rtd="5" rmt_rtd="5"/>
+       <!-- Store remote rtd[5] into local rtd[5]                             -->
+      <rtd_op op="sub" rtd="1" rtd1="1" rtd2="5"/>
+       <!-- Substract rtd[5] from rtd[1] and store the result into rtd[1].    -->
+    </action>
+  </recvRmt>
+
+  <!-- definition of the response time repartition table (unit is ms)   -->
+  <ResponseTimeRepartition value="10, 20, 30, 40, 50, 100, 150, 200"/>
+
+  <!-- definition of the call length repartition table (unit is ms)     -->
+  <CallLengthRepartition value="10, 50, 100, 500, 1000, 5000, 10000"/>
+
+</scenario>
